@@ -1,8 +1,10 @@
 const WebSocket = require('ws');
 const Player = require('./player'); // Assurez-vous que ce fichier existe et est correctement implémenté
 const Grid = require('./grid');     // De même pour ce fichier
+const config = require('./config.js'); 
 
-const wss = new WebSocket.Server({ port: 8080 });
+
+const wss = new WebSocket.Server({ port: config.network.WEBSOCKET_PORT });
 let players = [];
 let playerId = 0;
 
@@ -33,18 +35,14 @@ wss.on('connection', ws => {
 });
 
 function handleClientMessage(ws, data) {
-    const player = ws.player;
-
-    switch (data.type) {
-        case 'move':
-            // Mise à jour de la position du joueur
-            player.x = data.x;
-            player.y = data.y;
-            broadcastPlayerPosition(player);
-            break;
-        // Ajoutez d'autres cas au besoin
-        default:
-            console.log(`Type de message non reconnu: ${data.type}`);
+    //console.log(data, data.type);
+    if (data.type === 'move') {
+        const player = players.find(p => p.id === data.playerId); // Trouve le joueur par son ID
+        if (player) {
+            player.updatePosition(data.x, data.y);
+            grid.checkFireInteraction(player);
+            broadcastPlayerPosition(player); // Diffuse la nouvelle position
+        }
     }
 }
 
@@ -57,9 +55,24 @@ function broadcastPlayerPosition(player) {
     });
 
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.player.id !== player.id) {
+        if (client.readyState === WebSocket.OPEN) {
             client.send(payload);
         }
+    });
+
+    const updatedGrid = JSON.stringify({ type: 'updateGrid', grid: grid.fires });
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(updatedGrid);
+        }
+    });
+
+    players.forEach(player => {
+    if (!player.isAlive) {
+        const deathMessage = JSON.stringify({ type: 'death', message: 'Vous êtes mort.' });
+        player.ws.send(deathMessage); // player.ws est la WebSocket associée à ce joueur
+        // Vous pouvez également inclure une logique pour le déconnecter ou l'empêcher de jouer
+    }
     });
 }
 
