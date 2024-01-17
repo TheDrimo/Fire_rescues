@@ -1,2 +1,0 @@
-README
-hello world
